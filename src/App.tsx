@@ -1,7 +1,7 @@
-import MapsPage from "./pages/MapsPage";
+import MapPage from "./pages/MapPage";
 
 function App() {
-    return <MapsPage />;
+    return <MapPage />;
 }
 
 export default App;
