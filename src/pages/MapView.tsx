@@ -17,7 +17,7 @@ export default function MapView() {
     const [map, setMap] = React.useState<google.maps.Map>();
 
     const [points, setPoints] = useState<PointItem[]>([]);
-    const [locations, setLocations] = useState<google.maps.LatLngLiteral[]>([]);
+    const [locations, setLocations] = useState<PointItem[]>([]);
 
     const [response, setResponse] =
         React.useState<google.maps.DistanceMatrixResponse | null>(null);
@@ -34,18 +34,18 @@ export default function MapView() {
     const directionsServiceOptions =
         // @ts-ignore
         React.useMemo<google.maps.DirectionsRequest>(() => {
-            if (points.length === 0 || points[0].pointA === undefined) {
+            if (points.length === 0 || points[0].point === undefined) {
                 return null;
             }
             return {
-                origin: points[0].pointA,
+                origin: points[0].point,
                 waypoints:
                     points.length > 2
                         ? points.slice(1, points.length - 1).map((p) => ({
-                              location: p.pointA,
+                              location: p.point,
                           }))
                         : [],
-                destination: points[points.length - 1].pointB,
+                destination: points[points.length - 1].point,
                 travelMode: "DRIVING",
             };
         }, [points]);
@@ -85,7 +85,7 @@ export default function MapView() {
                     />
 
                     {locations.map((p, i) => (
-                        <Marker key={`marker-item-${i}`} position={p} />
+                        <Marker key={`marker-item-${i}`} position={p.point} />
                     ))}
 
                     {points.length > 0 && (

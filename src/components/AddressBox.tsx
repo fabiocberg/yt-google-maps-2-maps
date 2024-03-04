@@ -8,15 +8,15 @@ type SearchBoxItem = {
 };
 
 export type PointItem = {
-    pointA: google.maps.LatLngLiteral;
-    pointB: google.maps.LatLngLiteral;
+    point: google.maps.LatLngLiteral;
+    formattedAddress: string;
     distance: number;
 };
 
 type AddressBoxProps = {
     map?: google.maps.Map;
     onTraceRoute: (points: PointItem[]) => void;
-    onSelectedLocation: (point: google.maps.LatLngLiteral) => void;
+    onSelectedLocation: (point: PointItem) => void;
 };
 
 export default function AddressBox({
@@ -24,13 +24,10 @@ export default function AddressBox({
     onTraceRoute,
     onSelectedLocation,
 }: AddressBoxProps) {
-    const [origin, setOrigin] = useState<google.maps.LatLngLiteral | null>(
-        null
-    );
-    const [destination, setDestination] =
-        useState<google.maps.LatLngLiteral | null>(null);
+    const [origin, setOrigin] = useState<PointItem | null>(null);
+    const [destination, setDestination] = useState<PointItem | null>(null);
 
-    const [points, setPoints] = useState<google.maps.LatLngLiteral[]>([]);
+    const [points, setPoints] = useState<PointItem[]>([]);
 
     const [searchBoxes, setSearchBoxes] = useState<SearchBoxItem[]>([]);
 
@@ -54,34 +51,57 @@ export default function AddressBox({
         };
         switch (id) {
             case "origin":
-                setOrigin(location);
+                setOrigin({
+                    point: location,
+                    formattedAddress: place.formatted_address || "",
+                    distance: 0,
+                });
                 break;
             case "destination":
-                setDestination(location);
+                setDestination({
+                    point: location,
+                    formattedAddress: place.formatted_address || "",
+                    distance: 0,
+                });
                 break;
             default:
-                setPoints((prev) => [...prev, location]);
+                setPoints((prev) => [
+                    ...prev,
+                    {
+                        point: location,
+                        formattedAddress: place.formatted_address || "",
+                        distance: 0,
+                    },
+                ]);
         }
-        onSelectedLocation(location);
+        const point: PointItem = {
+            point: location,
+            formattedAddress: place.formatted_address || "",
+            distance: 0,
+        };
+        onSelectedLocation(point);
         map?.panTo(location);
     };
 
     const getDistance = async (
-        point1: google.maps.LatLngLiteral,
-        point2: google.maps.LatLngLiteral
+        point1: PointItem,
+        point2: PointItem
     ): Promise<number> => {
         return new Promise((resolve, reject) => {
             if (!map) {
                 reject(-1);
                 return;
             }
+            if (!point1 || !point2 || !point1.point || !point2.point) {
+                return -1;
+            }
             const directionsService = new google.maps.DirectionsService();
             const directionsRenderer = new google.maps.DirectionsRenderer();
             directionsRenderer.setMap(map); // Existing map object displays directions
             // Create route from existing points used for markers
             const request: any = {
-                origin: point1,
-                destination: point2,
+                origin: point1.point,
+                destination: point2.point,
                 travelMode: "DRIVING",
             };
 
@@ -107,67 +127,119 @@ export default function AddressBox({
     const traceRoute = async () => {
         if (origin && destination) {
             const routePoints: PointItem[] = [];
-            const orderedPoints = [];
+            let orderedPoints: PointItem[] = [];
             if (points.length === 0) {
                 const dist = await getDistance(origin, destination);
                 routePoints.push({
-                    pointA: origin,
-                    pointB: destination,
+                    point: origin.point,
+                    formattedAddress: origin.formattedAddress,
+                    distance: 0,
+                });
+                routePoints.push({
+                    point: destination.point,
+                    formattedAddress: destination.formattedAddress,
                     distance: dist,
                 });
             } else if (points.length === 1) {
                 let dist = await getDistance(origin, points[0]);
                 routePoints.push({
-                    pointA: origin,
-                    pointB: points[0],
+                    point: origin.point,
+                    formattedAddress: origin.formattedAddress,
+                    distance: 0,
+                });
+                routePoints.push({
+                    point: points[0].point,
+                    formattedAddress: points[0].formattedAddress,
                     distance: dist,
                 });
                 dist = await getDistance(points[0], destination);
                 routePoints.push({
-                    pointA: points[0],
-                    pointB: destination,
+                    point: destination.point,
+                    formattedAddress: destination.formattedAddress,
                     distance: dist,
                 });
             } else if (points.length > 1) {
-                for (let i = 0; i < points.length - 1; i++) {
-                    if (i + 1 === points.length) {
-                        break;
+                const _points: PointItem[] = [];
+                for (const p1 of points) {
+                    let found = false;
+                    let count = 0;
+                    for (const p2 of points) {
+                        if (
+                            p1.point.lat === origin.point.lat &&
+                            p1.point.lng === origin.point.lng
+                        ) {
+                            found = true;
+                            break;
+                        }
+                        if (
+                            p2.point.lat === destination.point.lat &&
+                            p2.point.lng === destination.point.lng
+                        ) {
+                            found = true;
+                            break;
+                        }
+                        if (
+                            p1.point.lat === p2.point.lat &&
+                            p1.point.lng === p2.point.lng
+                        ) {
+                            count++;
+                        }
+                        if (count > 1) {
+                            found = true;
+                            break;
+                        }
                     }
-                    const dist = await getDistance(points[i], points[i + 1]);
-                    orderedPoints.push({
-                        pointA: points[i],
-                        pointB: points[i + 1],
+                    if (!found) {
+                        _points.push(p1);
+                    }
+                }
+                _points.unshift(origin);
+                _points.push(destination);
+
+                for (let i = 1; i < _points.length; i++) {
+                    const dist = await getDistance(_points[i - 1], _points[i]);
+                    if (dist === -1) {
+                        continue;
+                    }
+                    routePoints.push({
+                        point: _points[i - 1].point,
+                        formattedAddress: _points[i - 1].formattedAddress,
                         distance: dist,
                     });
                 }
+
+                const dist = await getDistance(
+                    _points[_points.length - 2],
+                    _points[_points.length - 1]
+                );
+                routePoints.push({
+                    point: _points[_points.length - 1].point,
+                    formattedAddress:
+                        _points[_points.length - 1].formattedAddress,
+                    distance: dist,
+                });
+
+                orderedPoints = [...routePoints];
+                const _origin = routePoints[0];
+                const _destination = routePoints[routePoints.length - 1];
+
+                orderedPoints = orderedPoints.slice(1, routePoints.length - 1);
+
                 orderedPoints.sort((a, b) => {
                     if (a.distance < b.distance) {
                         return -1;
-                    } else {
+                    }
+                    if (a.distance > b.distance) {
                         return 1;
                     }
+                    return 0;
                 });
-                let distance = await getDistance(origin, points[0]);
-                routePoints.push({
-                    pointA: origin,
-                    pointB: points[0],
-                    distance: distance,
-                });
-                for (let i = 0; i < orderedPoints.length - 1; i++) {
-                    routePoints.push(orderedPoints[i]);
-                }
-                distance = await getDistance(
-                    points[orderedPoints.length - 1],
-                    destination
-                );
-                routePoints.push({
-                    pointA: points[orderedPoints.length - 1],
-                    pointB: destination,
-                    distance: distance,
-                });
+
+                orderedPoints.unshift(_origin);
+                orderedPoints.push(_destination);
             }
             console.log("routePoints: ", routePoints);
-            onTraceRoute(routePoints);
+            onTraceRoute(orderedPoints);
         }
     };
 
